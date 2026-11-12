@@ -1,0 +1,616 @@
+openapi: 3.1.0
+info:
+  title: Hindsight API
+  version: 1.0.0
+  summary: See what your past stock sales really cost you.
+  description: |
+    Hindsight compares what an investor received when they sold a stock with what the same shares
+    would be worth today (split-adjusted). Reports are paid with credits: one credit per distinct
+    ticker in the report. Credits belong to a plan, and every member of a plan draws from the same pool.
+
+    Clients: a small web page, a scheduled monthly job, and an AI agent acting for a user.
+
+    **Error model.** Every error is an RFC 9457 Problem Details object with a stable, machine-readable
+    `code`. Clients must branch on `code`, never on `detail` (prose may change). Clients must treat an
+    unknown `code` as non-retryable, so new codes can be added without breaking them.
+
+    | code | status | retry? |
+    |---|---|---|
+    | `unauthorized` | 401 | no, sign in again |
+    | `invalid_credentials` | 401 | no |
+    | `insufficient_credits` | 402 | no, until credits are added |
+    | `not_plan_owner` | 403 | no |
+    | `not_found` | 404 | no |
+    | `idempotency_key_reuse` | 409 | no, use a new key |
+    | `already_member` | 409 | no |
+    | `validation_error` | 422 | no, fix the request |
+    | `idempotency_key_required` | 422 | no, add the header |
+    | `position_not_sold` | 422 | no |
+    | `internal_error` | 500 | yes, with backoff |
+servers:
+  - url: http://localhost:8000
+    description: Local (Docker Compose)
+tags:
+  - name: auth
+  - name: portfolios
+  - name: reports
+  - name: plans
+  - name: health
+security:
+  - bearerAuth: []
+
+paths:
+  /health/live:
+    get:
+      tags: [health]
+      operationId: getLiveness
+      summary: Is the process up?
+      security: []
+      responses:
+        "200":
+          description: The process is running.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: getReadiness
+      summary: Can the service handle requests (database reachable)?
+      security: []
+      responses:
+        "200":
+          description: Ready to serve traffic.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Not ready (for example, the database is unreachable).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /auth/token:
+    post:
+      tags: [auth]
+      operationId: createToken
+      summary: Sign in and get a short-lived access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenRequest" }
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "401":
+          description: Wrong email or password (`invalid_credentials`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /portfolios:
+    get:
+      tags: [portfolios]
+      operationId: listPortfolios
+      summary: List the caller's portfolios.
+      responses:
+        "200":
+          description: The caller's portfolios (never another user's).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortfolioList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [portfolios]
+      operationId: createPortfolio
+      summary: Create a portfolio owned by the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortfolioCreate" }
+      responses:
+        "201":
+          description: Created.
+          headers:
+            Location: { $ref: "#/components/headers/Location" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Portfolio" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /portfolios/{portfolioId}:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioId"
+    get:
+      tags: [portfolios]
+      operationId: getPortfolio
+      summary: View a portfolio and its positions.
+      responses:
+        "200":
+          description: The portfolio.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Portfolio" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /portfolios/{portfolioId}/positions:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioId"
+    post:
+      tags: [portfolios]
+      operationId: addPosition
+      summary: Add a position (a buy, and optionally its sell) to a portfolio.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PositionCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Position" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /portfolios/{portfolioId}/hindsight-reports:
+    parameters:
+      - $ref: "#/components/parameters/PortfolioId"
+    post:
+      tags: [reports]
+      operationId: requestReport
+      summary: Request a hindsight report (holds credits, finishes in the background).
+      description: |
+        Holds one credit per distinct ticker on the caller's plan and queues the report. Returns
+        202 right away; poll `GET /hindsight-reports/{reportId}` until the status is `done` or `failed`.
+
+        Idempotent: retrying with the same `Idempotency-Key` and the same body returns the original
+        response and never holds credits twice. The same key with a different body is `409`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportRequest" }
+      responses:
+        "202":
+          description: Accepted. Credits are held until the report finishes.
+          headers:
+            Location: { $ref: "#/components/headers/Location" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: Not enough credits on the plan (`insufficient_credits`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Idempotency-Key already used with a different body (`idempotency_key_reuse`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /hindsight-reports/{reportId}:
+    parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/ReportId" }
+    get:
+      tags: [reports]
+      operationId: getReport
+      summary: Check a report's status and results.
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /plans/me:
+    get:
+      tags: [plans]
+      operationId: getMyPlan
+      summary: See the caller's plan and its credits.
+      responses:
+        "200":
+          description: The plan the caller belongs to.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /plans/me/members:
+    post:
+      tags: [plans]
+      operationId: addMember
+      summary: Add a user to the caller's plan (plan owner only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MemberCreate" }
+      responses:
+        "201":
+          description: Added.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotPlanOwner" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The user already belongs to a shared plan (`already_member`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /plans/me/members/{memberId}:
+    delete:
+      tags: [plans]
+      operationId: removeMember
+      summary: Remove a member from the caller's plan (plan owner only).
+      description: |
+        Takes effect immediately: the removed member's next credit spend is refused even if their
+        token has not expired, because membership is checked inside the credit transaction.
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/UserId" }
+      responses:
+        "204":
+          description: Removed.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotPlanOwner" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PortfolioId:
+      name: portfolioId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/PortfolioId" }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: A unique key per logical request (a UUID works). Reuse it only to retry.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+
+  headers:
+    Location:
+      description: URL of the created or accepted resource.
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing, expired or invalid token (`unauthorized`).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: |
+        Not found, or not yours (`not_found`). Both cases return the same response so callers
+        cannot learn which IDs exist.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotPlanOwner:
+      description: Only the plan owner can do this (`not_plan_owner`).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ValidationError:
+      description: The request is invalid (`validation_error`, `idempotency_key_required`, `position_not_sold`).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    # ---------- IDs: opaque strings with a type prefix ----------
+    UserId:
+      type: string
+      pattern: "^us_[A-Za-z0-9]+$"
+      examples: ["us_8f3k2"]
+    PortfolioId:
+      type: string
+      pattern: "^pf_[A-Za-z0-9]+$"
+      examples: ["pf_42"]
+    PositionId:
+      type: string
+      pattern: "^ps_[A-Za-z0-9]+$"
+      examples: ["ps_7"]
+    ReportId:
+      type: string
+      pattern: "^rp_[A-Za-z0-9]+$"
+      examples: ["rp_901"]
+    PlanId:
+      type: string
+      pattern: "^pl_[A-Za-z0-9]+$"
+      examples: ["pl_3"]
+
+    # ---------- Shared value types ----------
+    Ticker:
+      type: string
+      pattern: "^[A-Z][A-Z0-9.\\-]{0,9}$"
+      description: Upper-case stock symbol.
+      examples: ["AAPL", "BRK.B"]
+    Money:
+      type: string
+      pattern: "^-?[0-9]+\\.[0-9]{2}$"
+      description: An amount in USD with exactly two decimals, sent as a string so no client rounds it.
+      examples: ["1200.00", "-290.00"]
+
+    # ---------- Errors ----------
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, plus a stable `code`.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          description: A URI identifying the problem type.
+          examples: ["https://hindsight.example/problems/insufficient-credits"]
+        title:
+          type: string
+          examples: ["Not enough credits"]
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          description: Human-readable explanation. Never parse it.
+        code:
+          type: string
+          pattern: "^[a-z_]+$"
+          description: Stable machine-readable error code (see the catalog in the API description).
+          examples: ["insufficient_credits"]
+        requestId:
+          type: string
+          description: Correlation ID of the request, to find it in the logs.
+        errors:
+          type: array
+          description: Field-level problems, for `validation_error`.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string, examples: ["positionIds"] }
+              message: { type: string }
+
+    # ---------- Health ----------
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+
+    # ---------- Auth ----------
+    TokenRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          examples: ["alice@example.com"]
+        password:
+          type: string
+          minLength: 1
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required: [accessToken, tokenType, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          const: Bearer
+        expiresIn:
+          type: integer
+          description: Seconds until the token expires.
+          examples: [900]
+
+    # ---------- Portfolios ----------
+    PortfolioCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          examples: ["Retirement"]
+    Portfolio:
+      type: object
+      additionalProperties: false
+      required: [id, name, createdAt, positions]
+      properties:
+        id: { $ref: "#/components/schemas/PortfolioId" }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        positions:
+          type: array
+          items: { $ref: "#/components/schemas/Position" }
+    PortfolioList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Portfolio" }
+
+    PositionCreate:
+      type: object
+      additionalProperties: false
+      required: [ticker, shares, buyDate]
+      properties:
+        ticker: { $ref: "#/components/schemas/Ticker" }
+        shares:
+          type: integer
+          minimum: 1
+          description: Whole shares only (fractional shares are out of scope for the MVP).
+        buyDate:
+          type: string
+          format: date
+        sellDate:
+          type: ["string", "null"]
+          format: date
+          description: Leave empty if the position is still held. Must not be before buyDate.
+    Position:
+      type: object
+      additionalProperties: false
+      required: [id, ticker, shares, buyDate, sellDate]
+      properties:
+        id: { $ref: "#/components/schemas/PositionId" }
+        ticker: { $ref: "#/components/schemas/Ticker" }
+        shares: { type: integer, minimum: 1 }
+        buyDate: { type: string, format: date }
+        sellDate: { type: ["string", "null"], format: date }
+
+    # ---------- Reports ----------
+    ReportRequest:
+      type: object
+      additionalProperties: false
+      required: [positionIds]
+      properties:
+        positionIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/PositionId" }
+    ReportAccepted:
+      type: object
+      additionalProperties: false
+      required: [id, status, creditsHeld, creditsAvailable]
+      properties:
+        id: { $ref: "#/components/schemas/ReportId" }
+        status:
+          type: string
+          const: pending
+        creditsHeld:
+          type: integer
+          minimum: 1
+          description: Credits held for this report (one per distinct ticker).
+        creditsAvailable:
+          type: integer
+          minimum: 0
+          description: Credits left on the plan after the hold.
+    Report:
+      type: object
+      additionalProperties: false
+      required: [id, portfolioId, status, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/ReportId" }
+        portfolioId: { $ref: "#/components/schemas/PortfolioId" }
+        status:
+          type: string
+          enum: [pending, done, failed]
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        creditsCharged:
+          type: integer
+          minimum: 0
+          description: Credits actually charged (0 while pending, and 0 if the report failed).
+        failureReason:
+          type: ["string", "null"]
+          description: Why the report failed, when status is `failed`.
+        results:
+          type: array
+          description: One entry per position, when status is `done`.
+          items: { $ref: "#/components/schemas/ReportResult" }
+    ReportResult:
+      type: object
+      additionalProperties: false
+      required: [positionId, ticker, shares, soldFor, worthToday, difference]
+      properties:
+        positionId: { $ref: "#/components/schemas/PositionId" }
+        ticker: { $ref: "#/components/schemas/Ticker" }
+        shares: { type: integer, minimum: 1 }
+        soldFor:
+          $ref: "#/components/schemas/Money"
+          description: Closing price on the sell date times the shares.
+        worthToday:
+          $ref: "#/components/schemas/Money"
+          description: The same shares today, adjusted for splits since the sale.
+        difference:
+          $ref: "#/components/schemas/Money"
+          description: worthToday minus soldFor. Positive means selling cost you money.
+
+    # ---------- Plans ----------
+    Plan:
+      type: object
+      additionalProperties: false
+      required: [id, kind, role, creditsAvailable, creditsHeld, memberCount]
+      properties:
+        id: { $ref: "#/components/schemas/PlanId" }
+        kind:
+          type: string
+          enum: [personal, shared]
+        role:
+          type: string
+          enum: [owner, member]
+          description: The caller's role on this plan.
+        creditsAvailable: { type: integer, minimum: 0 }
+        creditsHeld:
+          type: integer
+          minimum: 0
+          description: Credits held by reports that are still pending.
+        memberCount: { type: integer, minimum: 1 }
+    MemberCreate:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    Member:
+      type: object
+      additionalProperties: false
+      required: [userId, email, role]
+      properties:
+        userId: { $ref: "#/components/schemas/UserId" }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [owner, member]
