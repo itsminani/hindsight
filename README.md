@@ -32,4 +32,21 @@ credit plans, and requesting a hindsight report with credits protected under con
 
 ## Running it
 
-Coming soon (one command with Docker Compose).
+Requires Docker Desktop.
+
+```bash
+cp .env.example .env          # first time only; local development values
+docker compose up --build     # API on http://localhost:8000, PostgreSQL on localhost:5432
+```
+
+- API docs (the contract): http://localhost:8000/docs
+- Health: http://localhost:8000/health/live and /health/ready
+- Stop: `Ctrl+C`, or `docker compose down` (add `-v` to also delete the database)
+
+### Without Docker (API only)
+
+```bash
+cd backend
+python -m uv run uvicorn hindsight.main:app --reload
+python -m uv run pytest
+```

@@ -1,0 +1,14 @@
+# Keep the build context small and never send secrets or local junk to Docker.
+.git
+.env
+.env.*
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/node_modules
+**/dist
+*.db
+*.log
+.vscode
+.idea
