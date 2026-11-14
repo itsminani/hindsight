@@ -6,12 +6,14 @@ from contextlib import asynccontextmanager
 import yaml
 from fastapi import FastAPI
 
-from hindsight.api import health
+from hindsight.api import auth, health
 from hindsight.api.errors import register_error_handlers
 from hindsight.api.middleware import RequestIdMiddleware
 from hindsight.config import Settings, get_settings
 from hindsight.logging_setup import configure_logging
 from hindsight.repositories.db import Database
+from hindsight.repositories.postgres import PostgresUnitOfWork
+from hindsight.service.auth import AuthService, TokenService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -34,15 +36,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Hindsight API", version="1.0.0", lifespan=lifespan)
     # Without a database URL the app still starts (liveness works), but /health/ready says 503.
     app.state.database = database
+    _wire_services(app, settings, database)
     app.add_middleware(RequestIdMiddleware)
     register_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(auth.router)
 
     # Swagger UI (/docs) shows the hand-written contract
     contract = yaml.safe_load(settings.contract_path.read_text(encoding="utf-8"))
     app.openapi = lambda: contract
 
     return app
+
+
+def _wire_services(app: FastAPI, settings: Settings, database: Database | None) -> None:
+    """Build the services once and keep them on app.state, where api/deps.py finds them.
+
+    This is the only place that picks PostgreSQL behind the repository interfaces.
+    Without a database (some tests), no services exist and routes that need one fail loudly.
+    """
+    app.state.token_service = app.state.auth_service = None
+    if database is None:
+        return
+
+    def uow_factory() -> PostgresUnitOfWork:
+        """A new unit of work (one transaction) for each use case call."""
+        return PostgresUnitOfWork(database)
+
+    tokens = TokenService(settings.require_jwt_secret(), settings.token_lifetime_seconds)
+    app.state.token_service = tokens
+    app.state.auth_service = AuthService(uow_factory, tokens)
 
 
 app = create_app()

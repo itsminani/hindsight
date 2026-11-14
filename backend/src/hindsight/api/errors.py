@@ -6,11 +6,19 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from hindsight.logging_setup import request_id_var
+from hindsight.service.errors import ServiceError
 
 PROBLEM_TYPE_BASE = "https://hindsight.example/problems/"
 
 # Default code for errors raised by the framework itself (unknown route, wrong method...).
 _CODE_FOR_STATUS = {401: "unauthorized", 404: "not_found", 405: "method_not_allowed"}
+
+# HTTP status for each business error code raised by the service layer.
+_STATUS_FOR_CODE = {
+    "invalid_credentials": 401,
+    "unauthorized": 401,
+    "not_found": 404,
+}
 
 
 class ApiError(Exception):
@@ -26,10 +34,13 @@ class ApiError(Exception):
         self.detail = detail
 
 
-def problem(status: int, code: str, title: str, detail: str | None = None, errors=None) -> JSONResponse:
+def problem(
+    status: int, code: str, title: str, detail: str | None = None, errors=None, headers=None
+) -> JSONResponse:
     """Build an application/problem+json response (RFC 9457) with our stable `code` and the request ID.
 
     errors: optional list of {"field", "message"} for validation errors.
+    headers: optional extra response headers.
     """
     body = {
         "type": PROBLEM_TYPE_BASE + code.replace("_", "-"),
@@ -42,12 +53,24 @@ def problem(status: int, code: str, title: str, detail: str | None = None, error
         body["detail"] = detail
     if errors:
         body["errors"] = errors
-    return JSONResponse(body, status_code=status, media_type="application/problem+json")
+    if status == 401:
+        # RFC 6750: tell the client which authentication scheme to use.
+        headers = {"WWW-Authenticate": "Bearer", **(headers or {})}
+    return JSONResponse(body, status_code=status, media_type="application/problem+json", headers=headers)
 
 
 async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
     """Turn an ApiError raised by our code into its Problem response."""
     return problem(exc.status, exc.code, exc.title, exc.detail)
+
+
+async def _service_error(_: Request, exc: ServiceError) -> JSONResponse:
+    """Turn a business error from the service layer into its Problem response."""
+    status = _STATUS_FOR_CODE.get(exc.code)
+    if status is None:
+        # A service error with no mapping is a bug in this file: fail loudly, don't guess a status.
+        raise RuntimeError(f"no HTTP status mapped for service error code {exc.code!r}") from exc
+    return problem(status, exc.code, exc.title, exc.detail)
 
 
 async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -69,5 +92,6 @@ def register_error_handlers(app: FastAPI) -> None:
     """Attach the error handlers above to the app."""
     # Unexpected exceptions (500) are handled in RequestIdMiddleware, so they keep the request ID.
     app.add_exception_handler(ApiError, _api_error)
+    app.add_exception_handler(ServiceError, _service_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.add_exception_handler(RequestValidationError, _validation_error)

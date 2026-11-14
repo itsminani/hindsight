@@ -87,3 +87,42 @@ def clean_database(database: Database) -> Database:
 def uow(clean_database: Database) -> PostgresUnitOfWork:
     """A fresh unit of work on the clean test database."""
     return PostgresUnitOfWork(clean_database)
+
+
+TEST_JWT_SECRET = "test-secret-" + "x" * 32
+DEMO_PASSWORD = "demo-password"
+
+
+@pytest.fixture
+def seeded_database(clean_database: Database) -> Database:
+    """The clean test database with the demo data (Alice, Bob, Carol) loaded."""
+    from hindsight.seed import seed
+
+    seed(clean_database, DEMO_PASSWORD)
+    return clean_database
+
+
+@pytest.fixture
+def app(seeded_database: Database):
+    """The real app wired to the seeded test database (never your dev database)."""
+    from hindsight.config import Settings
+    from hindsight.main import create_app
+
+    url = seeded_database.engine.url.render_as_string(hide_password=False)
+    return create_app(Settings(database_url=url, jwt_secret=TEST_JWT_SECRET, _env_file=None))
+
+
+@pytest.fixture
+def api(app):
+    """An HTTP test client for the app (500s come back as responses, not exceptions)."""
+    from fastapi.testclient import TestClient
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client
+
+
+def sign_in(api, email: str) -> dict[str, str]:
+    """Sign in as a demo user and return the Authorization header to send with requests."""
+    response = api.post("/auth/token", json={"email": email, "password": DEMO_PASSWORD})
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['accessToken']}"}

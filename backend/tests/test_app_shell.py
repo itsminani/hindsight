@@ -50,7 +50,7 @@ def test_not_ready_without_a_database(client):
 def test_ready_when_the_database_answers(database):
     """With the (test) database reachable, /health/ready says 200 "ok"."""
     url = database.engine.url.render_as_string(hide_password=False)
-    with TestClient(create_app(Settings(database_url=url, _env_file=None))) as c:
+    with TestClient(create_app(Settings(database_url=url, jwt_secret="x" * 32, _env_file=None))) as c:
         r = c.get("/health/ready")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
@@ -59,7 +59,7 @@ def test_ready_when_the_database_answers(database):
 def test_not_ready_when_the_database_is_down():
     """When PostgreSQL cannot be reached (nothing listens on port 1), /health/ready says 503."""
     down = "postgresql+psycopg://nobody:nothing@127.0.0.1:1/hindsight"
-    with TestClient(create_app(Settings(database_url=down, _env_file=None))) as c:
+    with TestClient(create_app(Settings(database_url=down, jwt_secret="x" * 32, _env_file=None))) as c:
         r = c.get("/health/ready")
     assert r.status_code == 503
     assert r.json() == {"status": "unavailable"}
