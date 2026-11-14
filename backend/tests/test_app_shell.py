@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+from hindsight.config import Settings
 from hindsight.main import create_app
 
 
@@ -15,8 +16,8 @@ class Body(BaseModel):
 
 @pytest.fixture
 def client() -> TestClient:
-    """A test client for a fresh app, plus two throwaway routes that exercise the error handlers."""
-    app = create_app()
+    """A test client for a fresh app with no database, plus two throwaway routes for the error handlers."""
+    app = create_app(Settings(database_url=None, _env_file=None))
 
     @app.get("/boom")
     def boom():
@@ -38,9 +39,30 @@ def test_liveness(client):
     assert r.json() == {"status": "ok"}
 
 
-def test_readiness(client):
-    """/health/ready answers ok while nothing is down."""
-    assert client.get("/health/ready").json() == {"status": "ok"}
+def test_not_ready_without_a_database(client):
+    """With no database configured, /health/ready says 503 "unavailable" (but liveness stays 200)."""
+    r = client.get("/health/ready")
+    assert r.status_code == 503
+    assert r.json() == {"status": "unavailable"}
+    assert client.get("/health/live").status_code == 200
+
+
+def test_ready_when_the_database_answers(database):
+    """With the (test) database reachable, /health/ready says 200 "ok"."""
+    url = database.engine.url.render_as_string(hide_password=False)
+    with TestClient(create_app(Settings(database_url=url, _env_file=None))) as c:
+        r = c.get("/health/ready")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_not_ready_when_the_database_is_down():
+    """When PostgreSQL cannot be reached (nothing listens on port 1), /health/ready says 503."""
+    down = "postgresql+psycopg://nobody:nothing@127.0.0.1:1/hindsight"
+    with TestClient(create_app(Settings(database_url=down, _env_file=None))) as c:
+        r = c.get("/health/ready")
+    assert r.status_code == 503
+    assert r.json() == {"status": "unavailable"}
 
 
 def test_request_id_is_generated(client):
