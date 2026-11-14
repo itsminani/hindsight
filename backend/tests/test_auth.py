@@ -50,8 +50,11 @@ def test_wrong_password_and_unknown_email_look_the_same(api, email):
 
 @pytest.mark.parametrize(
     "body",
-    [{"email": "alice@example.com"}, {"email": "not-an-email", "password": "x"},
-     {"email": "alice@example.com", "password": "x", "admin": True}],
+    [
+        {"email": "alice@example.com"},
+        {"email": "not-an-email", "password": "x"},
+        {"email": "alice@example.com", "password": "x", "admin": True},
+    ],
 )
 def test_invalid_sign_in_bodies_are_422(api, body):
     """Missing fields, a malformed email or an unknown extra field are validation errors."""
@@ -88,7 +91,13 @@ def _forge(claims: dict, secret: str = TEST_JWT_SECRET, algorithm: str = "HS256"
 def _claims(**overrides) -> dict:
     """Valid claims for user us_test, with some replaced."""
     now = datetime.now(UTC)
-    return {"sub": "us_test", "iss": ISSUER, "aud": AUDIENCE, "iat": now, "exp": now + timedelta(minutes=5)} | overrides
+    return {
+        "sub": "us_test",
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+    } | overrides
 
 
 @pytest.mark.parametrize(

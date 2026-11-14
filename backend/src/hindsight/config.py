@@ -20,9 +20,7 @@ class Settings(BaseSettings):
     token_lifetime_seconds: how long an access token stays valid (15 minutes).
     """
 
-    model_config = SettingsConfigDict(
-        env_prefix="HINDSIGHT_", env_file=_REPO_ROOT / ".env", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_prefix="HINDSIGHT_", env_file=_REPO_ROOT / ".env", extra="ignore")
 
     env: str = "local"
     log_level: str = "INFO"

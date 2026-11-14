@@ -116,9 +116,7 @@ class Position(Base):
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    portfolio_id: Mapped[str] = mapped_column(
-        ForeignKey("portfolios.id", ondelete="CASCADE"), index=True
-    )
+    portfolio_id: Mapped[str] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), index=True)
     ticker: Mapped[str] = mapped_column(Text)
     shares: Mapped[int] = mapped_column(Integer)
     buy_date: Mapped[date] = mapped_column(Date)
@@ -152,9 +150,7 @@ class ReportItem(Base):
 
     __tablename__ = "report_items"
 
-    report_id: Mapped[str] = mapped_column(
-        ForeignKey("reports.id", ondelete="CASCADE"), primary_key=True
-    )
+    report_id: Mapped[str] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), primary_key=True)
     position_id: Mapped[str] = mapped_column(ForeignKey("positions.id"), primary_key=True)
     sold_for: Mapped[Decimal | None] = mapped_column(Money)
     worth_today: Mapped[Decimal | None] = mapped_column(Money)
@@ -185,9 +181,7 @@ class Job(Base):
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    report_id: Mapped[str] = mapped_column(
-        ForeignKey("reports.id", ondelete="CASCADE"), unique=True
-    )
+    report_id: Mapped[str] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), unique=True)
     status: Mapped[str] = mapped_column(Text, server_default="queued")
     attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

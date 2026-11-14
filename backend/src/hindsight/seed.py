@@ -66,7 +66,9 @@ def _reset(database: Database) -> None:
         conn.execute(text(f"TRUNCATE {tables} CASCADE"))
 
 
-def _add_user_with_personal_plan(uow: PostgresUnitOfWork, email: str, password_hash: str, credits: int) -> User:
+def _add_user_with_personal_plan(
+    uow: PostgresUnitOfWork, email: str, password_hash: str, credits: int
+) -> User:
     """Create a user and their personal plan, and put them on it as owner."""
     user = User(id=new_id("user"), email=email, password_hash=password_hash)
     uow.users.add(user)
@@ -80,7 +82,9 @@ def _add_portfolios(uow: PostgresUnitOfWork, owner: User, portfolios: dict) -> N
     """Create the owner's portfolios with their positions."""
     for name, rows in portfolios.items():
         positions = [Position(new_id("position"), t, n, bought, sold) for t, n, bought, sold in rows]
-        uow.portfolios.add(Portfolio(id=new_id("portfolio"), owner_id=owner.id, name=name, positions=positions))
+        uow.portfolios.add(
+            Portfolio(id=new_id("portfolio"), owner_id=owner.id, name=name, positions=positions)
+        )
 
 
 def seed(database: Database, password: str) -> bool:

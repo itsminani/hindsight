@@ -33,11 +33,21 @@ def test_list_shows_only_my_portfolios(api, alice, bob):
 
 def test_portfolio_body_matches_the_contract_shape(api, alice):
     """camelCase fields, ISO dates, null for a position still held, nothing extra."""
-    portfolio = next(p for p in api.get("/portfolios", headers=alice).json()["items"] if p["name"] == "Tech I sold too early")
+    portfolio = next(
+        p
+        for p in api.get("/portfolios", headers=alice).json()["items"]
+        if p["name"] == "Tech I sold too early"
+    )
     assert set(portfolio) == {"id", "name", "createdAt", "positions"}
     assert portfolio["id"].startswith("pf_")
     aapl = next(p for p in portfolio["positions"] if p["ticker"] == "AAPL")
-    assert aapl == {"id": aapl["id"], "ticker": "AAPL", "shares": 50, "buyDate": "2015-03-02", "sellDate": "2017-06-01"}
+    assert aapl == {
+        "id": aapl["id"],
+        "ticker": "AAPL",
+        "shares": 50,
+        "buyDate": "2015-03-02",
+        "sellDate": "2017-06-01",
+    }
     msft = next(p for p in portfolio["positions"] if p["ticker"] == "MSFT")
     assert msft["sellDate"] is None
 
@@ -110,7 +120,12 @@ def test_portfolio_name_length_is_validated(api, alice, name):
 
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("get", "/portfolios"), ("post", "/portfolios"), ("get", "/portfolios/pf_x"), ("post", "/portfolios/pf_x/positions")],
+    [
+        ("get", "/portfolios"),
+        ("post", "/portfolios"),
+        ("get", "/portfolios/pf_x"),
+        ("post", "/portfolios/pf_x/positions"),
+    ],
 )
 def test_every_portfolio_route_requires_a_token(api, method, path):
     """No token: 401 on every route, before anything else is checked."""

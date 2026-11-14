@@ -34,7 +34,13 @@ class PortfolioService:
             return owned_portfolio(uow, user_id, portfolio_id)
 
     def add_position(
-        self, user_id: str, portfolio_id: str, ticker: str, shares: int, buy_date: date, sell_date: date | None
+        self,
+        user_id: str,
+        portfolio_id: str,
+        ticker: str,
+        shares: int,
+        buy_date: date,
+        sell_date: date | None,
     ) -> Position:
         """Add a position to the caller's portfolio."""
         try:

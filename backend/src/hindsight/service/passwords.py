@@ -19,5 +19,5 @@ def verify_password(password_hash: str, password: str) -> bool:
     """True if the password matches the hash, False otherwise (never raises for a wrong password)."""
     try:
         return _hasher.verify(password_hash, password)
-    except (VerificationError, InvalidHashError):
+    except VerificationError, InvalidHashError:
         return False

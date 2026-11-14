@@ -154,9 +154,12 @@ class PostgresPlanRepository(PlanRepository):
 
     def count_members(self, plan_id: str) -> int:
         """Return how many users belong to the plan."""
-        return self._s.scalar(
-            select(func.count()).select_from(orm.PlanMember).where(orm.PlanMember.plan_id == plan_id)
-        ) or 0
+        return (
+            self._s.scalar(
+                select(func.count()).select_from(orm.PlanMember).where(orm.PlanMember.plan_id == plan_id)
+            )
+            or 0
+        )
 
     def personal_plan_of(self, user_id: str) -> Plan | None:
         """Return the user's personal plan, or None."""
@@ -365,12 +368,17 @@ class PostgresUnitOfWork(UnitOfWork):
 
     def __exit__(self, *exc_info: object) -> None:
         """Roll back whatever was not committed, then return the connection to the pool."""
-        assert self._session is not None
-        self._session.rollback()
-        self._session.close()
+        session = self._require_session()
+        session.rollback()
+        session.close()
         self._session = None
 
     def commit(self) -> None:
         """Commit the transaction."""
-        assert self._session is not None
-        self._session.commit()
+        self._require_session().commit()
+
+    def _require_session(self) -> Session:
+        """The open session; using the unit of work outside a `with` block is a programming error."""
+        if self._session is None:
+            raise RuntimeError("use the unit of work inside a `with` block")
+        return self._session

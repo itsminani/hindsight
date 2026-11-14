@@ -33,7 +33,7 @@ class TokenResponse(ApiModel):
     """POST /auth/token 200 response."""
 
     access_token: str
-    token_type: str = "Bearer"
+    token_type: str = "Bearer"  # noqa: S105 - the auth scheme's name, not a password
     expires_in: int
 
 

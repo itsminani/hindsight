@@ -41,7 +41,9 @@ def test_owner_adds_a_member(api, alice, carol):
     assert r.status_code == 201
     assert r.json()["email"] == "carol@example.com" and r.json()["role"] == "member"
     assert r.json()["userId"].startswith("us_")
-    assert api.get("/plans/me", headers=carol).json()["id"] == api.get("/plans/me", headers=alice).json()["id"]
+    assert (
+        api.get("/plans/me", headers=carol).json()["id"] == api.get("/plans/me", headers=alice).json()["id"]
+    )
 
 
 def test_member_cannot_manage_members(api, bob):
@@ -64,7 +66,9 @@ def test_adding_someone_already_in_a_shared_plan_is_409(api, alice):
 
 def test_adding_an_unknown_email_is_404(api, alice):
     """No such user: 404."""
-    assert api.post("/plans/me/members", json={"email": "nobody@example.com"}, headers=alice).status_code == 404
+    assert (
+        api.post("/plans/me/members", json={"email": "nobody@example.com"}, headers=alice).status_code == 404
+    )
 
 
 def test_removed_member_cannot_spend_from_the_plan_anymore(api, alice, bob):

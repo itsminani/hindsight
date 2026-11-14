@@ -132,7 +132,9 @@ def test_missing_idempotency_key_is_422(api, alice):
     """No Idempotency-Key header: 422 idempotency_key_required."""
     tech = _portfolio(api, alice, "Tech I sold too early")
     r = api.post(
-        f"/portfolios/{tech['id']}/hindsight-reports", json={"positionIds": _sold_ids(tech, "AAPL")}, headers=alice
+        f"/portfolios/{tech['id']}/hindsight-reports",
+        json={"positionIds": _sold_ids(tech, "AAPL")},
+        headers=alice,
     )
     assert r.status_code == 422 and r.json()["code"] == "idempotency_key_required"
 
