@@ -17,10 +17,15 @@ configure_logging(settings.log_level)
 target_metadata = Base.metadata
 
 
+def _database_url() -> str:
+    """The URL to migrate: one passed in by code (the tests' own database), else the settings'."""
+    return context.config.attributes.get("database_url") or settings.require_database_url()
+
+
 def run_migrations_offline() -> None:
     """Print the SQL instead of running it (alembic upgrade head --sql), e.g. for a DBA review."""
     context.configure(
-        url=settings.require_database_url(),
+        url=_database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -31,7 +36,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Connect to the database and apply the pending migrations in one transaction."""
-    engine = create_engine(settings.require_database_url(), poolclass=pool.NullPool)
+    engine = create_engine(_database_url(), poolclass=pool.NullPool)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
