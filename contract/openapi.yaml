@@ -190,6 +190,9 @@ paths:
           description: Accepted. Credits are held until the report finishes.
           headers:
             Location: { $ref: "#/components/headers/Location" }
+            Idempotent-Replayed:
+              description: Present (value `true`) when this is the saved response of an earlier request with the same Idempotency-Key.
+              schema: { type: string, enum: ["true"] }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ReportAccepted" }

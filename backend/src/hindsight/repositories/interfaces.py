@@ -7,7 +7,7 @@ The service layer depends only on these abstract classes. Which storage stands b
 from abc import ABC, abstractmethod
 from typing import Self
 
-from hindsight.domain.models import Membership, Plan, Portfolio, Position, User
+from hindsight.domain.models import Membership, Plan, Portfolio, Position, Report, StoredResponse, User
 
 
 class UserRepository(ABC):
@@ -61,6 +61,10 @@ class PlanRepository(ABC):
     def count_members(self, plan_id: str) -> int:
         """Return how many users belong to the plan."""
 
+    @abstractmethod
+    def personal_plan_of(self, user_id: str) -> Plan | None:
+        """Return the user's personal plan (where they go back to when removed from a shared plan)."""
+
 
 class PortfolioRepository(ABC):
     """Home of portfolios and their positions, loaded and saved together."""
@@ -82,6 +86,42 @@ class PortfolioRepository(ABC):
         """Store a new position in an existing portfolio."""
 
 
+class ReportRepository(ABC):
+    """Home of hindsight reports and their items."""
+
+    @abstractmethod
+    def add(self, report: Report) -> Report:
+        """Store a new report with its items; returns it with database-filled fields (created_at)."""
+
+    @abstractmethod
+    def get(self, report_id: str) -> Report | None:
+        """Return the report with its items, or None."""
+
+
+class JobQueue(ABC):
+    """The outbox: background work recorded in the same transaction as the business change (Ch9)."""
+
+    @abstractmethod
+    def enqueue_report(self, report_id: str) -> str:
+        """Queue the job that will compute this report; returns the job ID."""
+
+
+class IdempotencyStore(ABC):
+    """Home of the Ch3 promise: one attempt, one outcome. Keys are private to each user."""
+
+    @abstractmethod
+    def get(self, user_id: str, key: str) -> StoredResponse | None:
+        """Return the response saved for this user's key, or None."""
+
+    @abstractmethod
+    def put(self, user_id: str, key: str, response: StoredResponse) -> None:
+        """Save the response for this user's key. Raises KeyAlreadyUsed if it is already taken."""
+
+
+class KeyAlreadyUsed(Exception):
+    """Another request saved a response for the same Idempotency-Key first (a concurrent retry)."""
+
+
 class UnitOfWork(ABC):
     """One business transaction: every repository inside it commits or rolls back together.
 
@@ -96,6 +136,9 @@ class UnitOfWork(ABC):
     users: UserRepository
     plans: PlanRepository
     portfolios: PortfolioRepository
+    reports: ReportRepository
+    jobs: JobQueue
+    idempotency: IdempotencyStore
 
     @abstractmethod
     def __enter__(self) -> Self:

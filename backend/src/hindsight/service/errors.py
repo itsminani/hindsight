@@ -43,3 +43,38 @@ class InvalidInput(ServiceError):
 
     code = "validation_error"
     title = "The request is invalid"
+
+
+class NotEnoughCredits(ServiceError):
+    """The caller's plan does not have enough available credits."""
+
+    code = "insufficient_credits"
+    title = "Not enough credits"
+
+
+class PositionNotSold(ServiceError):
+    """A report can only include positions that were sold."""
+
+    code = "position_not_sold"
+    title = "Position not sold"
+
+
+class IdempotencyKeyReuse(ServiceError):
+    """The same Idempotency-Key was sent with a different request."""
+
+    code = "idempotency_key_reuse"
+    title = "Idempotency-Key already used"
+
+
+class NotPlanOwner(ServiceError):
+    """Only the plan owner can manage its members."""
+
+    code = "not_plan_owner"
+    title = "Only the plan owner can do this"
+
+
+class AlreadyMember(ServiceError):
+    """The user already belongs to a shared plan."""
+
+    code = "already_member"
+    title = "Already in a shared plan"

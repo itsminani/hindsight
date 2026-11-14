@@ -10,7 +10,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from hindsight.service.auth import AuthService, TokenService
 from hindsight.service.errors import Unauthorized
+from hindsight.service.plans import PlanService
 from hindsight.service.portfolios import PortfolioService
+from hindsight.service.reports import ReportService
 
 # auto_error=False: we send our own Problem response instead of FastAPI's default 403.
 _bearer = HTTPBearer(auto_error=False)
@@ -37,6 +39,16 @@ def get_token_service(request: Request) -> TokenService:
 def get_portfolio_service(request: Request) -> PortfolioService:
     """The PortfolioService built once in main.py."""
     return _service(request, "portfolio_service")
+
+
+def get_report_service(request: Request) -> ReportService:
+    """The ReportService built once in main.py."""
+    return _service(request, "report_service")
+
+
+def get_plan_service(request: Request) -> PlanService:
+    """The PlanService built once in main.py."""
+    return _service(request, "plan_service")
 
 
 def current_user_id(

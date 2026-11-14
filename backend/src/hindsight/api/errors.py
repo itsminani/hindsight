@@ -19,6 +19,11 @@ _STATUS_FOR_CODE = {
     "unauthorized": 401,
     "not_found": 404,
     "validation_error": 422,
+    "insufficient_credits": 402,
+    "position_not_sold": 422,
+    "idempotency_key_reuse": 409,
+    "not_plan_owner": 403,
+    "already_member": 409,
 }
 
 

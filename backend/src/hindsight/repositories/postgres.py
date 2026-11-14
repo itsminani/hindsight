@@ -7,14 +7,32 @@ so nothing above this layer ever sees a SQLAlchemy object.
 from typing import Self
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from hindsight.domain.models import Membership, Plan, PlanKind, Portfolio, Position, Role, User
+from hindsight.domain.ids import new_id
+from hindsight.domain.models import (
+    Membership,
+    Plan,
+    PlanKind,
+    Portfolio,
+    Position,
+    Report,
+    ReportItem,
+    ReportStatus,
+    Role,
+    StoredResponse,
+    User,
+)
 from hindsight.repositories import orm
 from hindsight.repositories.db import Database
 from hindsight.repositories.interfaces import (
+    IdempotencyStore,
+    JobQueue,
+    KeyAlreadyUsed,
     PlanRepository,
     PortfolioRepository,
+    ReportRepository,
     UnitOfWork,
     UserRepository,
 )
@@ -140,6 +158,13 @@ class PostgresPlanRepository(PlanRepository):
             select(func.count()).select_from(orm.PlanMember).where(orm.PlanMember.plan_id == plan_id)
         ) or 0
 
+    def personal_plan_of(self, user_id: str) -> Plan | None:
+        """Return the user's personal plan, or None."""
+        row = self._s.scalar(
+            select(orm.Plan).where(orm.Plan.owner_id == user_id, orm.Plan.kind == PlanKind.PERSONAL.value)
+        )
+        return _to_plan(row) if row else None
+
 
 class PostgresPortfolioRepository(PortfolioRepository):
     """Portfolios and positions stored in the portfolios and positions tables."""
@@ -212,6 +237,110 @@ class PostgresPortfolioRepository(PortfolioRepository):
         self._s.flush()
 
 
+class PostgresReportRepository(ReportRepository):
+    """Reports stored in the reports and report_items tables."""
+
+    def __init__(self, session: Session) -> None:
+        """session: the unit of work's session; this repository never commits by itself."""
+        self._s = session
+
+    def add(self, report: Report) -> Report:
+        """Insert the report and one report_items row per position; returns it with created_at."""
+        row = orm.Report(
+            id=report.id,
+            portfolio_id=report.portfolio_id,
+            requested_by=report.requested_by,
+            plan_id=report.plan_id,
+            status=report.status.value,
+            credits_held=report.credits_held,
+            credits_charged=report.credits_charged,
+        )
+        self._s.add(row)
+        self._s.flush()
+        self._s.add_all(orm.ReportItem(report_id=report.id, position_id=i.position_id) for i in report.items)
+        self._s.flush()
+        self._s.refresh(row)
+        report.created_at = row.created_at
+        return report
+
+    def get(self, report_id: str) -> Report | None:
+        """Return the report with its items (ticker and shares come from the positions table)."""
+        row = self._s.get(orm.Report, report_id)
+        if row is None:
+            return None
+        items = self._s.execute(
+            select(orm.ReportItem, orm.Position.ticker, orm.Position.shares)
+            .join(orm.Position, orm.Position.id == orm.ReportItem.position_id)
+            .where(orm.ReportItem.report_id == report_id)
+            .order_by(orm.Position.ticker, orm.Position.id)
+        )
+        return Report(
+            id=row.id,
+            portfolio_id=row.portfolio_id,
+            requested_by=row.requested_by,
+            plan_id=row.plan_id,
+            credits_held=row.credits_held,
+            status=ReportStatus(row.status),
+            credits_charged=row.credits_charged,
+            failure_reason=row.failure_reason,
+            created_at=row.created_at,
+            completed_at=row.completed_at,
+            items=[
+                ReportItem(item.position_id, ticker, shares, item.sold_for, item.worth_today, item.difference)
+                for item, ticker, shares in items
+            ],
+        )
+
+
+class PostgresJobQueue(JobQueue):
+    """Jobs stored in the jobs table, picked up later by the worker."""
+
+    def __init__(self, session: Session) -> None:
+        """session: the unit of work's session, so the job commits with the business change or not at all."""
+        self._s = session
+
+    def enqueue_report(self, report_id: str) -> str:
+        """Insert a queued job for the report; returns its ID."""
+        job_id = new_id("job")
+        self._s.add(orm.Job(id=job_id, report_id=report_id))
+        self._s.flush()
+        return job_id
+
+
+class PostgresIdempotencyStore(IdempotencyStore):
+    """Saved responses in the idempotency_keys table, keyed by (user, key)."""
+
+    def __init__(self, session: Session) -> None:
+        """session: the unit of work's session; this repository never commits by itself."""
+        self._s = session
+
+    def get(self, user_id: str, key: str) -> StoredResponse | None:
+        """Return the saved response for this user's key, or None."""
+        row = self._s.get(orm.IdempotencyKey, (user_id, key))
+        if row is None:
+            return None
+        return StoredResponse(row.request_hash, row.response_status, row.response_body)
+
+    def put(self, user_id: str, key: str, response: StoredResponse) -> None:
+        """Insert the response. If a concurrent request inserted the same key first, the primary key
+        refuses this one and we raise KeyAlreadyUsed (the caller rolls back and replays theirs)."""
+        self._s.add(
+            orm.IdempotencyKey(
+                user_id=user_id,
+                key=key,
+                request_hash=response.request_hash,
+                response_status=response.status,
+                response_body=response.body,
+            )
+        )
+        try:
+            self._s.flush()
+        except IntegrityError as error:
+            if getattr(error.orig.diag, "constraint_name", None) == "pk_idempotency_keys":
+                raise KeyAlreadyUsed(key) from error
+            raise
+
+
 class PostgresUnitOfWork(UnitOfWork):
     """A unit of work over one SQLAlchemy session = one PostgreSQL transaction.
 
@@ -229,6 +358,9 @@ class PostgresUnitOfWork(UnitOfWork):
         self.users = PostgresUserRepository(self._session)
         self.plans = PostgresPlanRepository(self._session)
         self.portfolios = PostgresPortfolioRepository(self._session)
+        self.reports = PostgresReportRepository(self._session)
+        self.jobs = PostgresJobQueue(self._session)
+        self.idempotency = PostgresIdempotencyStore(self._session)
         return self
 
     def __exit__(self, *exc_info: object) -> None:

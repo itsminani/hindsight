@@ -87,3 +87,75 @@ class PortfolioList(ApiModel):
     """GET /portfolios response."""
 
     items: list[PortfolioOut]
+
+
+class ReportRequest(RequestModel):
+    """POST /portfolios/{id}/hindsight-reports body."""
+
+    position_ids: list[str] = Field(min_length=1, max_length=50)
+
+    @field_validator("position_ids")
+    @classmethod
+    def _unique(cls, position_ids: list[str]) -> list[str]:
+        """The same position cannot be listed twice."""
+        if len(set(position_ids)) != len(position_ids):
+            raise ValueError("positionIds must be unique")
+        return position_ids
+
+
+class ReportAcceptedOut(ApiModel):
+    """202 response: the report is queued and its credits are held."""
+
+    id: str
+    status: str
+    credits_held: int
+    credits_available: int
+
+
+class ReportResultOut(ApiModel):
+    """One position's outcome in a finished report. Money is a string with 2 decimals."""
+
+    position_id: str
+    ticker: str
+    shares: int
+    sold_for: str
+    worth_today: str
+    difference: str
+
+
+class ReportOut(ApiModel):
+    """GET /hindsight-reports/{id} response."""
+
+    id: str
+    portfolio_id: str
+    status: str
+    created_at: datetime
+    completed_at: datetime | None
+    credits_charged: int
+    failure_reason: str | None
+    results: list[ReportResultOut] | None = None
+
+
+class PlanOut(ApiModel):
+    """GET /plans/me response."""
+
+    id: str
+    kind: str
+    role: str
+    credits_available: int
+    credits_held: int
+    member_count: int
+
+
+class MemberCreate(RequestModel):
+    """POST /plans/me/members body."""
+
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+$")
+
+
+class MemberOut(ApiModel):
+    """A plan member."""
+
+    user_id: str
+    email: str
+    role: str
