@@ -18,17 +18,29 @@ services:
       timeout: 3s
       retries: 10
 
-  api:
+  # Runs once, applies pending migrations, then exits.
+  migrate:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    environment:
+    command: ["alembic", "upgrade", "head"]
+    environment: &api-env
       HINDSIGHT_ENV: docker
       HINDSIGHT_LOG_LEVEL: ${HINDSIGHT_LOG_LEVEL:-INFO}
       HINDSIGHT_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hindsight}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hindsight}
     depends_on:
       db:
-        condition: service_healthy   # start the API only once Postgres accepts connections
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully   # start the API only on an up-to-date schema
     ports:
       - "127.0.0.1:8000:8000"
 

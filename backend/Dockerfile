@@ -22,6 +22,9 @@ RUN useradd --create-home --uid 10001 app
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY contract/openapi.yaml /app/contract/openapi.yaml
+# Alembic reads its settings from pyproject.toml; the "migrate" service runs these.
+COPY backend/pyproject.toml /app/pyproject.toml
+COPY backend/migrations /app/migrations
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

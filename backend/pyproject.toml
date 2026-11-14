@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "See what your past stock sales really cost you"
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.16",
     "fastapi>=0.120",
+    "psycopg[binary]>=3.2",
     "pydantic-settings>=2.11",
     "pyyaml>=6.0",
+    "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.38",
 ]
 
@@ -26,3 +29,8 @@ dev = [
     "httpx>=0.28",
     "pytest>=8.4",
 ]
+
+[tool.alembic]
+# Migrations live in backend/migrations; versions/ holds one file per schema change.
+script_location = "%(here)s/migrations"
+file_template = "%%(rev)s_%%(slug)s"
