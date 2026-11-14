@@ -18,6 +18,7 @@ _STATUS_FOR_CODE = {
     "invalid_credentials": 401,
     "unauthorized": 401,
     "not_found": 404,
+    "validation_error": 422,
 }
 
 

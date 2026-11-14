@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import yaml
 from fastapi import FastAPI
 
-from hindsight.api import auth, health
+from hindsight.api import auth, health, portfolios
 from hindsight.api.errors import register_error_handlers
 from hindsight.api.middleware import RequestIdMiddleware
 from hindsight.config import Settings, get_settings
@@ -14,6 +14,7 @@ from hindsight.logging_setup import configure_logging
 from hindsight.repositories.db import Database
 from hindsight.repositories.postgres import PostgresUnitOfWork
 from hindsight.service.auth import AuthService, TokenService
+from hindsight.service.portfolios import PortfolioService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(portfolios.router)
 
     # Swagger UI (/docs) shows the hand-written contract
     contract = yaml.safe_load(settings.contract_path.read_text(encoding="utf-8"))
@@ -55,7 +57,7 @@ def _wire_services(app: FastAPI, settings: Settings, database: Database | None) 
     This is the only place that picks PostgreSQL behind the repository interfaces.
     Without a database (some tests), no services exist and routes that need one fail loudly.
     """
-    app.state.token_service = app.state.auth_service = None
+    app.state.token_service = app.state.auth_service = app.state.portfolio_service = None
     if database is None:
         return
 
@@ -66,6 +68,7 @@ def _wire_services(app: FastAPI, settings: Settings, database: Database | None) 
     tokens = TokenService(settings.require_jwt_secret(), settings.token_lifetime_seconds)
     app.state.token_service = tokens
     app.state.auth_service = AuthService(uow_factory, tokens)
+    app.state.portfolio_service = PortfolioService(uow_factory)
 
 
 app = create_app()

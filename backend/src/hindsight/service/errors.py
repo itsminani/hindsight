@@ -36,3 +36,10 @@ class NotFound(ServiceError):
 
     code = "not_found"
     title = "Not found"
+
+
+class InvalidInput(ServiceError):
+    """The request breaks a business rule that plain field validation could not catch."""
+
+    code = "validation_error"
+    title = "The request is invalid"
