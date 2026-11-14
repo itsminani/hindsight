@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     contract_path: the OpenAPI file shown at /docs.
     database_url: PostgreSQL connection string. No default on purpose (it holds a password);
         anything that touches the database fails loudly if it is missing.
+    seed_password: password given to the demo users by the seed script (local/demo only).
     """
 
     model_config = SettingsConfigDict(
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     contract_path: Path = _REPO_ROOT / "contract" / "openapi.yaml"
     database_url: str | None = None
+    seed_password: str | None = None
 
     def require_database_url(self) -> str:
         """Return the database URL, or stop with a clear message if it was never set."""
