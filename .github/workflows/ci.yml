@@ -1,0 +1,83 @@
+# Runs on every push and pull request. A red check blocks the merge (set "require status checks"
+# on main in GitHub's branch protection). Each job is independent, so they run in parallel.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token: CI never needs to write to the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that is now outdated.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff, layer rules)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install (exact versions from uv.lock)
+        run: uv sync --frozen
+      - name: Ruff lint
+        run: uv run ruff check --output-format github .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Layer rules (import-linter)
+        run: uv run lint-imports
+
+  test:
+    name: Tests on PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    # A throwaway PostgreSQL just for this run (same version as compose.yaml).
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: hindsight
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: hindsight
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hindsight" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # CI-only credentials for the throwaway database above; not a secret.
+      HINDSIGHT_DATABASE_URL: postgresql+psycopg://hindsight:ci-only-password@127.0.0.1:5432/hindsight
+      # GitHub sets CI=true, so database tests FAIL (never skip) if PostgreSQL is unreachable.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install (exact versions from uv.lock)
+        run: uv sync --frozen
+      - name: Migrations apply and match the models
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade base
+      - name: Tests with coverage gate
+        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
+      - name: Keep the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: backend/coverage.xml
+          if-no-files-found: ignore
