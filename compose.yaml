@@ -65,5 +65,14 @@ services:
       disable: true   # no HTTP port; Compose restarts it if the process exits
     restart: unless-stopped
 
+  # The web page (React, served by nginx), which forwards /api/* to the api service.
+  web:
+    build: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:8080"
+
 volumes:
   pgdata:
