@@ -5,6 +5,7 @@ import { getToken, onUnauthorized } from "./api/client";
 import { Toaster } from "sonner";
 import { Logo } from "./components/ui";
 import { currentEmail, signOut } from "./lib/session";
+import { PlanPage } from "./pages/PlanPage";
 import { PortfolioPage } from "./pages/PortfolioPage";
 import { PortfoliosPage } from "./pages/PortfoliosPage";
 import { ReportPage } from "./pages/ReportPage";
@@ -29,6 +30,7 @@ export function App() {
               <Route path="/portfolios/:portfolioId" element={<PortfolioPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/reports/:reportId" element={<ReportPage />} />
+              <Route path="/plan" element={<PlanPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
