@@ -5,6 +5,7 @@ import { getToken, onUnauthorized } from "./api/client";
 import { Toaster } from "sonner";
 import { Logo } from "./components/ui";
 import { currentEmail, signOut } from "./lib/session";
+import { PortfolioPage } from "./pages/PortfolioPage";
 import { PortfoliosPage } from "./pages/PortfoliosPage";
 import { SignInPage } from "./pages/SignInPage";
 
@@ -23,6 +24,7 @@ export function App() {
             <Route element={<Shell />}>
               <Route index element={<Navigate to="/portfolios" replace />} />
               <Route path="/portfolios" element={<PortfoliosPage />} />
+              <Route path="/portfolios/:portfolioId" element={<PortfolioPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
