@@ -133,6 +133,7 @@ class ReportOut(ApiModel):
     completed_at: datetime | None
     credits_charged: int
     failure_reason: str | None
+    price_source: str | None
     results: list[ReportResultOut] | None = None
 
 

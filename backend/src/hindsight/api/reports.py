@@ -44,6 +44,7 @@ def _report_out(report: Report) -> ReportOut:
         completed_at=report.completed_at,
         credits_charged=report.credits_charged,
         failure_reason=report.failure_reason,
+        price_source=report.price_source,
         **extra,
     )
 

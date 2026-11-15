@@ -4,14 +4,16 @@ Each repository converts between table rows (orm.py) and domain objects (domain/
 so nothing above this layer ever sees a SQLAlchemy object.
 """
 
+from datetime import timedelta
 from typing import Self
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from hindsight.domain.ids import new_id
 from hindsight.domain.models import (
+    Job,
     Membership,
     Plan,
     PlanKind,
@@ -288,11 +290,33 @@ class PostgresReportRepository(ReportRepository):
             failure_reason=row.failure_reason,
             created_at=row.created_at,
             completed_at=row.completed_at,
+            price_source=row.price_source,
             items=[
                 ReportItem(item.position_id, ticker, shares, item.sold_for, item.worth_today, item.difference)
                 for item, ticker, shares in items
             ],
         )
+
+    def save_outcome(self, report: Report) -> None:
+        """Update the report row and fill in each item's money values."""
+        self._s.execute(
+            update(orm.Report)
+            .where(orm.Report.id == report.id)
+            .values(
+                status=report.status.value,
+                credits_charged=report.credits_charged,
+                failure_reason=report.failure_reason,
+                price_source=report.price_source,
+                completed_at=func.now(),
+            )
+        )
+        for item in report.items:
+            self._s.execute(
+                update(orm.ReportItem)
+                .where(orm.ReportItem.report_id == report.id, orm.ReportItem.position_id == item.position_id)
+                .values(sold_for=item.sold_for, worth_today=item.worth_today, difference=item.difference)
+            )
+        self._s.flush()
 
 
 class PostgresJobQueue(JobQueue):
@@ -308,6 +332,50 @@ class PostgresJobQueue(JobQueue):
         self._s.add(orm.Job(id=job_id, report_id=report_id))
         self._s.flush()
         return job_id
+
+    def claim_next(self, stale_after_seconds: int) -> Job | None:
+        """Lock the oldest due job with SKIP LOCKED (other workers skip it instead of waiting)."""
+        row = self._s.execute(
+            text(
+                """
+                UPDATE jobs SET status = 'running', locked_at = now(), attempts = attempts + 1
+                WHERE id = (
+                    SELECT id FROM jobs
+                    WHERE (status = 'queued' AND run_after <= now())
+                       OR (status = 'running' AND locked_at < now() - make_interval(secs => :stale))
+                    ORDER BY run_after
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                RETURNING id, report_id, attempts
+                """
+            ),
+            {"stale": stale_after_seconds},
+        ).one_or_none()
+        return Job(row.id, row.report_id, row.attempts) if row else None
+
+    def finish(self, job_id: str) -> None:
+        """Mark the job done."""
+        self._s.execute(update(orm.Job).where(orm.Job.id == job_id).values(status="done", last_error=None))
+
+    def retry_later(self, job_id: str, delay_seconds: int, error: str) -> None:
+        """Back to the queue, due again after the delay."""
+        self._s.execute(
+            update(orm.Job)
+            .where(orm.Job.id == job_id)
+            .values(
+                status="queued",
+                run_after=func.now() + timedelta(seconds=delay_seconds),
+                locked_at=None,
+                last_error=error[:500],
+            )
+        )
+
+    def fail(self, job_id: str, error: str) -> None:
+        """Give up on the job."""
+        self._s.execute(
+            update(orm.Job).where(orm.Job.id == job_id).values(status="failed", last_error=error[:500])
+        )
 
 
 class PostgresIdempotencyStore(IdempotencyStore):

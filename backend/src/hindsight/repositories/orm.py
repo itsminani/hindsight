@@ -129,6 +129,7 @@ class Report(Base):
     __tablename__ = "reports"
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'done', 'failed')", name="status"),
+        CheckConstraint("price_source IN ('demo', 'tiingo')", name="price_source"),
         CheckConstraint("credits_held >= 0", name="credits_held_not_negative"),
         CheckConstraint("credits_charged >= 0", name="credits_charged_not_negative"),
     )
@@ -143,6 +144,7 @@ class Report(Base):
     failure_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    price_source: Mapped[str | None] = mapped_column(Text)
 
 
 class ReportItem(Base):

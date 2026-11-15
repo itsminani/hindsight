@@ -67,6 +67,7 @@ classDiagram
         +failure_reason : text NULL
         +created_at : timestamptz
         +completed_at : timestamptz NULL
+        +price_source : demo | tiingo NULL
     }
 
     class ReportItem {
@@ -154,5 +155,5 @@ stateDiagram-v2
 | # | Name | Contents |
 |---|---|---|
 | 001 | `initial_schema` | All tables above |
-| 002 | `report_dividends` | `reports.include_dividends` (backward-compatible contract change) |
-| 003 | `price_cache` | Cached closes and split events (after the milestone) |
+| 002 | `report_price_source` | `reports.price_source` (demo or tiingo): expand-only, nullable, backward-compatible |
+| 003 | `price_cache` | Cached daily closes, so repeated reports don't call the provider again (planned) |

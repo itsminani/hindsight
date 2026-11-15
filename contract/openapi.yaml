@@ -557,10 +557,18 @@ components:
         failureReason:
           type: ["string", "null"]
           description: Why the report failed, when status is `failed`.
+        priceSource:
+          $ref: "#/components/schemas/PriceSource"
         results:
           type: array
           description: One entry per position, when status is `done`.
           items: { $ref: "#/components/schemas/ReportResult" }
+    PriceSource:
+      type: ["string", "null"]
+      enum: [demo, tiingo, null]
+      description: |
+        Where the prices came from: `tiingo` (real market data) or `demo` (generated prices for
+        demonstrations, never real). Null while the report is pending.
     ReportResult:
       type: object
       additionalProperties: false

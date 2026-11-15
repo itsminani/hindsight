@@ -7,7 +7,16 @@ The service layer depends only on these abstract classes. Which storage stands b
 from abc import ABC, abstractmethod
 from typing import Self
 
-from hindsight.domain.models import Membership, Plan, Portfolio, Position, Report, StoredResponse, User
+from hindsight.domain.models import (
+    Job,
+    Membership,
+    Plan,
+    Portfolio,
+    Position,
+    Report,
+    StoredResponse,
+    User,
+)
 
 
 class UserRepository(ABC):
@@ -97,6 +106,10 @@ class ReportRepository(ABC):
     def get(self, report_id: str) -> Report | None:
         """Return the report with its items, or None."""
 
+    @abstractmethod
+    def save_outcome(self, report: Report) -> None:
+        """Write back a finished report: status, credits charged, failure reason, prices and results."""
+
 
 class JobQueue(ABC):
     """The outbox: background work recorded in the same transaction as the business change (Ch9)."""
@@ -104,6 +117,25 @@ class JobQueue(ABC):
     @abstractmethod
     def enqueue_report(self, report_id: str) -> str:
         """Queue the job that will compute this report; returns the job ID."""
+
+    @abstractmethod
+    def claim_next(self, stale_after_seconds: int) -> Job | None:
+        """Take the next due job (or one whose worker died) and mark it running; None if there is none.
+
+        Uses FOR UPDATE SKIP LOCKED, so several workers never take the same job.
+        """
+
+    @abstractmethod
+    def finish(self, job_id: str) -> None:
+        """Mark the job done."""
+
+    @abstractmethod
+    def retry_later(self, job_id: str, delay_seconds: int, error: str) -> None:
+        """Put the job back in the queue, due again after the delay."""
+
+    @abstractmethod
+    def fail(self, job_id: str, error: str) -> None:
+        """Give up on the job for good."""
 
 
 class IdempotencyStore(ABC):

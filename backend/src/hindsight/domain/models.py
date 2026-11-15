@@ -152,6 +152,7 @@ class Report:
     failure_reason: str | None = None
     created_at: datetime | None = None
     completed_at: datetime | None = None
+    price_source: str | None = None
     items: list[ReportItem] = field(default_factory=list)
 
 
@@ -167,6 +168,15 @@ class StoredResponse:
     request_hash: str
     status: int
     body: dict
+
+
+@dataclass(frozen=True)
+class Job:
+    """A unit of background work: compute one report. `attempts` counts tries so far."""
+
+    id: str
+    report_id: str
+    attempts: int
 
 
 class PriceSource(StrEnum):

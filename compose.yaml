@@ -39,12 +39,31 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    environment: *api-env
+    environment:
+      <<: *api-env
+      HINDSIGHT_TIINGO_API_KEY: ${HINDSIGHT_TIINGO_API_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully   # start the API only on an up-to-date schema
     ports:
       - "127.0.0.1:8000:8000"
+
+  # Computes queued reports in the background. Same image as the API, different command.
+  # Scale it with: docker compose up -d --scale worker=3 (jobs are claimed with SKIP LOCKED).
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "hindsight.worker"]
+    environment:
+      <<: *api-env
+      HINDSIGHT_TIINGO_API_KEY: ${HINDSIGHT_TIINGO_API_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true   # no HTTP port; Compose restarts it if the process exits
+    restart: unless-stopped
 
 volumes:
   pgdata:
