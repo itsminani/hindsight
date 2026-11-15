@@ -7,6 +7,7 @@ dependencies = [
     "alembic>=1.16",
     "argon2-cffi>=25.1",
     "fastapi>=0.120",
+    "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.11",
     "pyjwt>=2.10",
@@ -63,10 +64,11 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Layers only depend downwards (Ch5)"
 type = "layers"
+# Adapters (repositories: our database; integrations: outside services) are siblings.
 layers = [
     "hindsight.api",
     "hindsight.service",
-    "hindsight.repositories",
+    "hindsight.repositories | hindsight.integrations",
     "hindsight.domain",
 ]
 
@@ -81,6 +83,17 @@ name = "Services know nothing about HTTP"
 type = "forbidden"
 source_modules = ["hindsight.service"]
 forbidden_modules = ["fastapi", "starlette"]
+
+[[tool.importlinter.contracts]]
+name = "Services use the price provider interface, never Tiingo or demo prices directly"
+type = "forbidden"
+source_modules = ["hindsight.service"]
+forbidden_modules = [
+    "httpx",
+    "hindsight.integrations.tiingo",
+    "hindsight.integrations.demo_prices",
+    "hindsight.integrations.factory",
+]
 
 [[tool.importlinter.contracts]]
 name = "Services use repository interfaces, never the Postgres implementations"

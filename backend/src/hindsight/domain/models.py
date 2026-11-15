@@ -5,7 +5,7 @@ Repositories load and save these; the service layer works only with these.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 
 
@@ -167,3 +167,34 @@ class StoredResponse:
     request_hash: str
     status: int
     body: dict
+
+
+class PriceSource(StrEnum):
+    """Where prices come from: real market data, or generated demo prices (never shown as real)."""
+
+    DEMO = "demo"
+    TIINGO = "tiingo"
+
+
+@dataclass(frozen=True)
+class PriceBar:
+    """One trading day: the actual close, and the close adjusted for later splits and dividends."""
+
+    day: date
+    close: Decimal
+    adj_close: Decimal
+
+
+CENT = Decimal("0.01")
+
+
+def hindsight_values(shares: int, at_sale: PriceBar, today: PriceBar) -> tuple[Decimal, Decimal, Decimal]:
+    """(sold for, worth today, difference) for shares sold on `at_sale.day`, in dollars and cents.
+
+    Sold for = shares x the real close that day. Worth today = the same money grown by the
+    adjusted-price ratio, which counts splits and reinvested dividends since the sale.
+    A positive difference means selling cost money.
+    """
+    sold_for = (shares * at_sale.close).quantize(CENT, ROUND_HALF_UP)
+    worth_today = (shares * at_sale.close * today.adj_close / at_sale.adj_close).quantize(CENT, ROUND_HALF_UP)
+    return sold_for, worth_today, worth_today - sold_for

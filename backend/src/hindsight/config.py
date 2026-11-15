@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     seed_password: password given to the demo users by the seed script (local/demo only).
     jwt_secret: key that signs access tokens (32+ characters). No default, like database_url.
     token_lifetime_seconds: how long an access token stays valid (15 minutes).
+    tiingo_api_key: market-data API key (a secret). Without it, demo prices are used.
+    worker_poll_seconds: how long the worker sleeps when the queue is empty.
     """
 
     model_config = SettingsConfigDict(env_prefix="HINDSIGHT_", env_file=_REPO_ROOT / ".env", extra="ignore")
@@ -29,6 +31,8 @@ class Settings(BaseSettings):
     seed_password: str | None = None
     jwt_secret: str | None = None
     token_lifetime_seconds: int = 900
+    tiingo_api_key: str | None = None
+    worker_poll_seconds: float = 1.0
 
     def require_database_url(self) -> str:
         """Return the database URL, or stop with a clear message if it was never set."""
