@@ -7,6 +7,8 @@ import { Logo } from "./components/ui";
 import { currentEmail, signOut } from "./lib/session";
 import { PortfolioPage } from "./pages/PortfolioPage";
 import { PortfoliosPage } from "./pages/PortfoliosPage";
+import { ReportPage } from "./pages/ReportPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { SignInPage } from "./pages/SignInPage";
 
 // One cache for all API data (TanStack Query): pages share results and refetch when needed.
@@ -25,6 +27,8 @@ export function App() {
               <Route index element={<Navigate to="/portfolios" replace />} />
               <Route path="/portfolios" element={<PortfoliosPage />} />
               <Route path="/portfolios/:portfolioId" element={<PortfolioPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/reports/:reportId" element={<ReportPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
