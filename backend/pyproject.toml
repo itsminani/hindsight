@@ -31,6 +31,7 @@ dev = [
     "httpx>=0.28",
     "import-linter>=2.5",
     "pytest>=8.4",
+    "pytest-cov>=7.0",
     "ruff>=0.14",
 ]
 
@@ -91,3 +92,14 @@ forbidden_modules = [
     "hindsight.repositories.orm",
     "hindsight.repositories.db",
 ]
+
+# Coverage: measured on every test run in CI; the build fails below the threshold.
+[tool.coverage.run]
+source = ["hindsight"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = ["if __name__ == .__main__.:"]
