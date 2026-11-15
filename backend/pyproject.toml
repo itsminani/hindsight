@@ -29,6 +29,7 @@ filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
 [dependency-groups]
 dev = [
     "httpx>=0.28",
+    "import-linter>=2.5",
     "pytest>=8.4",
     "ruff>=0.14",
 ]
@@ -52,3 +53,41 @@ select = ["E", "F", "I", "UP", "B", "SIM", "S"]
 # Migrations live in backend/migrations; versions/ holds one file per schema change.
 script_location = "%(here)s/migrations"
 file_template = "%%(rev)s_%%(slug)s"
+
+# Layer rules, checked by "lint-imports" (and in CI). A forbidden import fails the build.
+[tool.importlinter]
+root_package = "hindsight"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers only depend downwards (Ch5)"
+type = "layers"
+layers = [
+    "hindsight.api",
+    "hindsight.service",
+    "hindsight.repositories",
+    "hindsight.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure Python (no web, no database)"
+type = "forbidden"
+source_modules = ["hindsight.domain"]
+forbidden_modules = ["fastapi", "starlette", "pydantic", "sqlalchemy", "psycopg", "hindsight.config"]
+
+[[tool.importlinter.contracts]]
+name = "Services know nothing about HTTP"
+type = "forbidden"
+source_modules = ["hindsight.service"]
+forbidden_modules = ["fastapi", "starlette"]
+
+[[tool.importlinter.contracts]]
+name = "Services use repository interfaces, never the Postgres implementations"
+type = "forbidden"
+source_modules = ["hindsight.service"]
+forbidden_modules = [
+    "sqlalchemy",
+    "hindsight.repositories.postgres",
+    "hindsight.repositories.orm",
+    "hindsight.repositories.db",
+]
