@@ -78,3 +78,10 @@ class AlreadyMember(ServiceError):
 
     code = "already_member"
     title = "Already in a shared plan"
+
+
+class PriceProviderUnavailable(ServiceError):
+    """The market-data provider can't be reached right now. Temporary."""
+
+    code = "price_provider_unavailable"
+    title = "Market data is unavailable right now"

@@ -27,6 +27,7 @@ info:
     | `idempotency_key_required` | 422 | no, add the header |
     | `position_not_sold` | 422 | no |
     | `internal_error` | 500 | yes, with backoff |
+    | `price_provider_unavailable` | 503 | yes, with backoff |
 servers:
   - url: http://localhost:8000
     description: Local (Docker Compose)
@@ -35,6 +36,7 @@ tags:
   - name: portfolios
   - name: reports
   - name: plans
+  - name: prices
   - name: health
 security:
   - bearerAuth: []
@@ -228,6 +230,41 @@ paths:
               schema: { $ref: "#/components/schemas/Report" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /tickers/{ticker}/prices:
+    parameters:
+      - name: ticker
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/Ticker" }
+    get:
+      tags: [prices]
+      operationId: getPriceHistory
+      summary: Weekly closing prices for a stock, for charts.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: First day to include.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: The prices, oldest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceHistory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Unknown ticker (`not_found`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503":
+          description: The price provider is unreachable right now (`price_provider_unavailable`); retry later.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /plans/me:
     get:
@@ -569,6 +606,25 @@ components:
       description: |
         Where the prices came from: `tiingo` (real market data) or `demo` (generated prices for
         demonstrations, never real). Null while the report is pending.
+    PriceHistory:
+      type: object
+      additionalProperties: false
+      required: [ticker, source, prices]
+      properties:
+        ticker: { $ref: "#/components/schemas/Ticker" }
+        source:
+          type: string
+          enum: [demo, tiingo]
+        prices:
+          type: array
+          description: Weekly closing prices, oldest first, adjusted for splits and dividends.
+          items:
+            type: object
+            additionalProperties: false
+            required: [date, close]
+            properties:
+              date: { type: string, format: date }
+              close: { $ref: "#/components/schemas/Money" }
     ReportResult:
       type: object
       additionalProperties: false

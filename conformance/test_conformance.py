@@ -4,6 +4,7 @@ Each test only drives the API; the client fixture validates every single respons
 contract/openapi.yaml (status allowed? content type? body matches the schema?).
 """
 
+import time
 import uuid
 
 import pytest
@@ -41,6 +42,7 @@ def test_unauthorized_everywhere(client):
         ("GET", "/portfolios"), ("POST", "/portfolios"), ("GET", "/portfolios/pf_x"),
         ("POST", "/portfolios/pf_x/positions"), ("POST", "/portfolios/pf_x/hindsight-reports"),
         ("GET", "/hindsight-reports/rp_x"), ("GET", "/plans/me"), ("POST", "/plans/me/members"),
+        ("GET", "/tickers/AAPL/prices?from=2024-01-01"),
         ("DELETE", "/plans/me/members/us_x"),
     ]
     for method, path in calls:
@@ -91,6 +93,36 @@ def test_report_flow(client, alice, bob):
     location = first.headers["Location"]
     assert client.get(location, headers=alice).status_code == 200
     assert client.get(location, headers=bob).status_code == 404
+
+
+def test_report_is_computed_by_the_worker(client, alice):
+    """End to end: request, then poll until the worker finishes; the done report (with results) conforms."""
+    portfolio = client.post("/portfolios", json={"name": "Conformance worker"}, headers=alice).json()
+    lot = client.post(
+        f"/portfolios/{portfolio['id']}/positions",
+        json={"ticker": "AAPL", "shares": 3, "buyDate": "2018-01-02", "sellDate": "2021-06-01"},
+        headers=alice,
+    ).json()
+    accepted = client.post(
+        f"/portfolios/{portfolio['id']}/hindsight-reports",
+        json={"positionIds": [lot["id"]]},
+        headers={**alice, "Idempotency-Key": str(uuid.uuid4())},
+    )
+    location = accepted.headers["Location"]
+    for _ in range(30):  # the worker polls every second
+        report = client.get(location, headers=alice).json()
+        if report["status"] != "pending":
+            break
+        time.sleep(0.5)
+    assert report["status"] == "done", report
+    assert report["results"][0]["ticker"] == "AAPL" and report["priceSource"] in ("demo", "tiingo")
+
+
+def test_price_history(client, alice):
+    """Weekly prices conform; unknown ticker is a 404 Problem; a bad date is a 422."""
+    assert client.get("/tickers/AAPL/prices", params={"from": "2024-01-01"}, headers=alice).status_code == 200
+    assert client.get("/tickers/ZZZZ/prices", params={"from": "2024-01-01"}, headers=alice).status_code == 404
+    assert client.get("/tickers/AAPL/prices", params={"from": "yesterday"}, headers=alice).status_code == 422
 
 
 def test_plan_flow(client, alice, bob, password):

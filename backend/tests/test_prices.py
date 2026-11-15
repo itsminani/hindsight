@@ -10,6 +10,7 @@ from hindsight.domain.models import PriceBar, PriceSource, hindsight_values
 from hindsight.integrations.demo_prices import DemoPriceProvider
 from hindsight.integrations.interfaces import ProviderUnavailable, UnknownTicker
 from hindsight.integrations.tiingo import TiingoPriceProvider
+from tests.conftest import sign_in
 
 TODAY = date(2026, 11, 13)
 
@@ -87,3 +88,24 @@ def test_tiingo_timeout_is_temporary():
 
     with pytest.raises(ProviderUnavailable):
         _tiingo(handler).daily_bars("AAPL", date(2020, 1, 1), date(2020, 2, 1))
+
+
+def test_price_history_endpoint_returns_weekly_demo_prices(api):
+    """Signed in: weekly points, oldest first, money as strings, and the source is shown."""
+    alice = sign_in(api, "alice@example.com")
+    r = api.get("/tickers/AAPL/prices", params={"from": "2024-01-01"}, headers=alice)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "AAPL" and body["source"] == "demo"
+    dates = [p["date"] for p in body["prices"]]
+    assert dates == sorted(dates) and len(dates) > 50
+    assert all(p["close"].count(".") == 1 and len(p["close"].split(".")[1]) == 2 for p in body["prices"])
+
+
+def test_price_history_errors(api):
+    """Unknown ticker 404, lower-case ticker 422, missing `from` 422, no token 401."""
+    alice = sign_in(api, "alice@example.com")
+    assert api.get("/tickers/ZZZZ/prices", params={"from": "2024-01-01"}, headers=alice).status_code == 404
+    assert api.get("/tickers/aapl/prices", params={"from": "2024-01-01"}, headers=alice).status_code == 422
+    assert api.get("/tickers/AAPL/prices", headers=alice).status_code == 422
+    assert api.get("/tickers/AAPL/prices", params={"from": "2024-01-01"}).status_code == 401

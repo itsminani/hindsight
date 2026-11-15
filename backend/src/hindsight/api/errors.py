@@ -24,6 +24,7 @@ _STATUS_FOR_CODE = {
     "idempotency_key_reuse": 409,
     "not_plan_owner": 403,
     "already_member": 409,
+    "price_provider_unavailable": 503,
 }
 
 

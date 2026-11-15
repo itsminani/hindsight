@@ -160,3 +160,18 @@ class MemberOut(ApiModel):
     user_id: str
     email: str
     role: str
+
+
+class PricePointOut(ApiModel):
+    """One weekly close."""
+
+    date: date
+    close: str
+
+
+class PriceHistoryOut(ApiModel):
+    """GET /tickers/{ticker}/prices response."""
+
+    ticker: str
+    source: str
+    prices: list[PricePointOut]

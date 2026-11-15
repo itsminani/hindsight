@@ -12,6 +12,7 @@ from hindsight.service.auth import AuthService, TokenService
 from hindsight.service.errors import Unauthorized
 from hindsight.service.plans import PlanService
 from hindsight.service.portfolios import PortfolioService
+from hindsight.service.prices import PriceService
 from hindsight.service.reports import ReportService
 
 # auto_error=False: we send our own Problem response instead of FastAPI's default 403.
@@ -49,6 +50,11 @@ def get_report_service(request: Request) -> ReportService:
 def get_plan_service(request: Request) -> PlanService:
     """The PlanService built once in main.py."""
     return _service(request, "plan_service")
+
+
+def get_price_service(request: Request) -> PriceService:
+    """The PriceService built once in main.py."""
+    return _service(request, "price_service")
 
 
 def current_user_id(
