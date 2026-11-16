@@ -29,8 +29,10 @@ info:
     | `internal_error` | 500 | yes, with backoff |
     | `price_provider_unavailable` | 503 | yes, with backoff |
 servers:
-  - url: http://localhost:8000
-    description: Local (Docker Compose)
+  # Relative on purpose: "Try it out" in /docs calls the same host that served the page, so it
+  # works on localhost, 127.0.0.1 or any deployment without CORS.
+  - url: /
+    description: The server hosting these docs (locally http://localhost:8000)
 tags:
   - name: auth
   - name: portfolios
