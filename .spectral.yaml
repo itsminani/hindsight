@@ -1,0 +1,41 @@
+# Contract lint (Spectral): style and consistency rules for contract/openapi.yaml, run in CI.
+# Starts from the standard OpenAPI ruleset, then adds our own house rules.
+extends: ["spectral:oas"]
+
+rules:
+  # Every operation is documented and can be referred to by a stable ID.
+  operation-operationId: error
+  operation-summary: error
+  operation-tags: error
+
+  # Every error response uses the Problem Details schema (RFC 9457), never an ad-hoc body.
+  # Health probes are the exception: /health/ready's 503 is the small {"status"} body probes expect.
+  hindsight-errors-are-problems:
+    description: 4xx/5xx responses must be application/problem+json (except /health probes)
+    severity: error
+    given: "$.paths[?(!@property.match(/^\\/health/))][*].responses[?(@property.match(/^[45]/))].content"
+    then:
+      field: "application/problem+json"
+      function: truthy
+
+  # IDs are opaque prefixed strings, never integers (Ch2).
+  hindsight-ids-are-strings:
+    description: Schemas named *Id must be strings with a pattern
+    severity: error
+    given: "$.components.schemas[?(@property.match(/Id$/))]"
+    then:
+      - field: type
+        function: pattern
+        functionOptions:
+          match: "^string$"
+      - field: pattern
+        function: truthy
+
+  # Request bodies refuse unknown fields, so typos are caught instead of ignored.
+  hindsight-closed-request-bodies:
+    description: Request schemas (*Create, *Request) set additionalProperties to false
+    severity: warn
+    given: "$.components.schemas[?(@property.match(/(Create|Request)$/))]"
+    then:
+      field: additionalProperties
+      function: falsy
