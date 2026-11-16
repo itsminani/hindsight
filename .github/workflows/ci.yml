@@ -59,6 +59,8 @@ jobs:
     env:
       # CI-only credentials for the throwaway database above; not a secret.
       HINDSIGHT_DATABASE_URL: postgresql+psycopg://hindsight:ci-only-password@127.0.0.1:5432/hindsight
+      # The app refuses to start without a signing key, even for tests; this one is CI-only.
+      HINDSIGHT_JWT_SECRET: ci-only-jwt-secret-for-the-test-job
       # GitHub sets CI=true, so database tests FAIL (never skip) if PostgreSQL is unreachable.
     steps:
       - uses: actions/checkout@v5
