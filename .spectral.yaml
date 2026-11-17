@@ -5,8 +5,15 @@ extends: ["spectral:oas"]
 rules:
   # Every operation is documented and can be referred to by a stable ID.
   operation-operationId: error
-  operation-summary: error
   operation-tags: error
+  # spectral:oas has no built-in "summary" rule, so this one is ours.
+  hindsight-operation-summary:
+    description: Every operation has a summary
+    severity: error
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace]"
+    then:
+      field: summary
+      function: truthy
 
   # Every error response uses the Problem Details schema (RFC 9457), never an ad-hoc body.
   # Health probes are the exception: /health/ready's 503 is the small {"status"} body probes expect.
